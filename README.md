@@ -4,7 +4,7 @@ _By Andrés Mejías at 12/03/2026_
 
 This manual outlines the standardized CI/CD workflow for database development using SQLcl Projects. It defines the end-to-end process for initializing a project, managing database state changes, and generating deployable artifacts for production environments.
 
-## Project Creation
+## 1. Project Creation
 
 New projects or existing projects
 
@@ -32,7 +32,7 @@ connect user/password@url
 CONNECT -SAVE myconn user@localhost:1521/orcl
 ```
 
-## Database Export
+## 2. Database Export
 
 Export source from database to files
 Control with filters in config
@@ -59,7 +59,7 @@ project export -o emp
 project export -o apex.100
 ```
 
-## State Changes
+## 3. State Changes
 
 Create the actual changes to be applied.
 
@@ -97,7 +97,7 @@ For every ticket, we create a **project stage** and perform **Git commits**. The
 
 Currently, the active release the team is developing is named "**Next**". A single release may consist of multiple **Changes**, and each change contains one or more scripts that modify database objects.
 
-## Artifact Generation
+## 4. Artifact Generation
 
 Generate a releaseble set of object
 
@@ -122,7 +122,7 @@ Before to create you can test changelogs/sets using:
 SQL> project verify
 ```
 
-## Release Deployment
+## 5. Release Deployment
 
 1. Create object on Development env
 2. Create artifact
