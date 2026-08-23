@@ -4,148 +4,172 @@ _By Andrés Mejías at 12/03/2026_
 
 This manual outlines the standardized CI/CD workflow for database development using SQLcl Projects. It defines the end-to-end process for initializing a project, managing database state changes, and generating deployable artifacts for production environments.
 
+---
+
 ## 1. Project Creation
 
-New projects or existing projects
+To initialize a new project or wrap an existing repository structure:
 
 ```cmd
-SQL> PROJECT init -name pname -makeroot -schemas cicd
+SQL> project init -name pname -makeroot -schemas cicd
+
 ```
+
+### Example
 
 ```cmd
 SQL> project init -name demo_project -schemas demo
 
-SQL> !git init --initial-branch=main
-SQL> !git add .
-SQL> !git commit -m "chore: initializing pname git repository"
+-- Initialize Git repository
+SQL> host git init --initial-branch=main
+SQL> host git add .
+SQL> host git commit -m "chore: initializing demo_project git repository"
+
 ```
 
-### Connection
+### Connection Setup
 
-To connect to database you can use just SQLcl or Oracle SQL Developer Extension for VSCode.
+To connect to the database, you can use SQLcl CLI or the Oracle SQL Developer Extension for VS Code.
 
-```SQL
-connect user/password@url
+```sql
+CONNECT user/password@url
+
 ```
 
-```SQL
+```sql
 CONNECT -SAVE myconn user@localhost:1521/orcl
+
 ```
 
-## 2. Database Export
+---
 
-Export source from database to files
-Control with filters in config
-Sync repo with changes in Development DB
+## 2. Database Export & Filtering
+
+Export source definitions from the database to local workspace files in `src/`. This syncs your Git repository with changes made in the Development Database.
 
 ```cmd
-SQL> PROJECT export
+SQL> project export
+
 ```
 
-### Sample
+### Custom Object Exports
 
-Create Liquibase changelogs/sets
+You can filter exports by object name, APEX application ID, or schema:
 
-```SQL
-UPDATE emp SET name = first_name || ' ' || last_name;
+```cmd
+-- Export a specific table or APEX application
+SQL> project export -o emp
+SQL> project export -o dep --schemas HR
+SQL> project export -o apex.100
+
 ```
+
+### Project Configurations & Exclusions
+
+To exclude unwanted objects (like synonyms or object grants) from being staged or exported:
+
+```cmd
+-- Exclude synonyms and grants from staging
+SQL> project config set -name stage.excludeObjects -value "ALL.OBJECT_GRANT,ALL.GRANT,ALL.SYNONYM"
+
+```
+
+---
+
+## 3. Staging Changes
+
+Generate Liquibase changelogs and changesets by comparing source files against the target/default branch.
+
+```cmd
+SQL> project stage -verbose
+
+```
+
+### Custom Scripts (`add-custom`)
+
+For data manipulation (DML), seed data, or ad-hoc scripts, create a custom staged file:
+
+```cmd
+SQL> project stage add-custom -file-name populate-customers.sql
+
+```
+
+This generates an empty file under the active custom directory (`dist/releases/next/_custom/`). Edit this file with your custom SQL:
 
 ```sql
-ALTER TABLE emp ADD depto NUMBER;
+INSERT INTO customers (dni, name) VALUES ('123456789', 'Sabrina Carpenter');
+
 ```
+
+> **NOTE:** Afterwards, commit the generated/modified files to your branch and open a Pull Request (PR) for review.
+
+### Directory Structure in `dist`
+
+SQLcl Projects utilizes a hierarchical changelog system within the `dist` folder:
+
+```text
+dist/
+└── releases/
+    ├── main/             <-- Promoted production releases
+    └── next/             <-- Active development release
+        ├── _custom/      <-- Custom DML/DDL scripts
+        └── branch-name/  <-- Feature branch changelogs
+
+```
+
+- **Main** ➔ **Release** ➔ **Change**
+- For every ticket/feature, perform a `project stage` and commit the changes.
+- Multiple **Changes** are bundled into a **Release** (currently named `next`), which is ultimately deployed and merged into **Main**.
+
+---
+
+## 4. Verification & Artifact Generation
+
+Before packaging, verify that all changelogs and changesets are valid:
 
 ```cmd
-project export -o emp
-project export -o apex.100
-```
-
-## 3. State Changes
-
-Create the actual changes to be applied.
-
-```cmd
-SQL> project state -verbose
-```
-
-For custom scripts, use
-
-```
-SQL> project stage add-custom
-```
-
-```
-project stage add-custom -file-name populate-customers.sql
-```
-
-`add-custom` command create a new file empty that we can modify to add our script.
-
-```sql
-INSERT INTO customers (dni,name) values ('123456789','Sabrina Carpenter');
-```
-
-NOTE: Afterwards, we commit the changes to our branch and then create a Pull Request.
-
-### Directories in dist
-
-Hierarchical changelogs in dist.
-
-Main => Release => Change
-
-We utilize a hierarchical changelog system within the dist folder, following a **Main** > **Release** > **Change** structure.
-
-For every ticket, we create a **project stage** and perform **Git commits**. These are later bundled into a **Release**, which is ultimately merged into the **Main** branch.
-
-Currently, the active release the team is developing is named "**Next**". A single release may consist of multiple **Changes**, and each change contains one or more scripts that modify database objects.
-
-## 4. Artifact Generation
-
-Generate a releaseble set of object
-
-```cmd
-SQL> project release -version 1.0
-```
-
-Generate an artifact for this set ot installable objects.
-The zip file with the changes.
-
-```cmd
-SQL> project gen-artifact
-```
-
-```
-project gen-artifact -name hr -version 1.0 -format zip -verbose
-```
-
-Before to create you can test changelogs/sets using:
-
-```
 SQL> project verify
+
 ```
+
+### Create a Release
+
+Package the current staged changes into a specific version state:
+
+```cmd
+SQL> project release -version 1.0.0
+
+```
+
+### Generate Artifact
+
+Create an installable ZIP archive containing the full deployment package (`dist/install.sql`, Liquibase controllers, and changelogs):
+
+```cmd
+SQL> project gen-artifact -name hr -version 1.0.0 -format zip -verbose
+
+```
+
+---
 
 ## 5. Release Deployment
 
-1. Create object on Development env
-2. Create artifact
-3. Install artifact on Production env
+The promotion flow follows the standard pipeline cycle:
+**[ DEV ] ➔ [ Artifact (.zip) ] ➔ [ QA / PROD ]**
 
-[ DEV ] => [ Artifact ] => [ PROC ]
+To deploy an artifact onto a target database environment:
 
 ```cmd
-SQL> project deploy -file pname-1.0.zip
-```
+SQL> project deploy -file artifact/demo_project-1.0.0.zip -verbose
 
 ```
-project deploy -file artifact/demo_project-1.0.0.zip
-```
+
+---
 
 ## References
 
-February2025. (2025, February 13). About the project command. Oracle Help Center. https://docs.oracle.com/en/database/oracle/sql-developer-command-line/24.4/sqcug/project-command.html
-
-Oracle Developers. (2024, December 2). SQLCL Projects: CI/CD made Easy for APEX [Video]. YouTube. https://www.youtube.com/watch?v=EM3_2Dd3LOs
-
-Oracle Developers. (2024b, December 27). Proyectos SQLcl: CI/CD Simplificado para APEX [Video]. YouTube. https://www.youtube.com/watch?v=FkNRKTuXQpY
-
-Oracle Developers. (2025, May 30). Developer Coaching: Effortless Oracle Database Change Management with SQLcl project [Video]. YouTube. https://www.youtube.com/watch?v=A4Z2FmNLITM
-
-Thatjeffsmith, & Thatjeffsmith. (2025, June 18). Getting started with Oracle Database CI/CD & SQLcl Projects. ThatJeffSmith | Helping You Be More Successful With Oracle Database. https://www.thatjeffsmith.com/archive/2025/05/getting-started-with-sqlcl-projects/
+- February2025. (2025, February 13). _About the project command_. Oracle Help Center. https://docs.oracle.com/en/database/oracle/sql-developer-command-line/24.4/sqcug/project-command.html
+- Oracle Developers. (2024, December 2). _SQLCL Projects: CI/CD made Easy for APEX_ [Video]. YouTube. https://www.youtube.com/watch?v=EM3_2Dd3LOs
+- Oracle Developers. (2024b, December 27). _Proyectos SQLcl: CI/CD Simplificado para APEX_ [Video]. YouTube. https://www.youtube.com/watch?v=FkNRKTuXQpY
+- Oracle Developers. (2025, May 30). _Developer Coaching: Effortless Oracle Database Change Management with SQLcl project_ [Video]. YouTube. https://www.youtube.com/watch?v=A4Z2FmNLITM
+- Thatjeffsmith. (2025, June 18). _Getting started with Oracle Database CI/CD & SQLcl Projects_. ThatJeffSmith. https://www.thatjeffsmith.com/archive/2025/05/getting-started-with-sqlcl-projects/
